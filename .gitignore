@@ -3,3 +3,7 @@ dist/
 *.png
 *.jpg
 !screenshots/.gitkeep
+
+# dotenv files (keep secrets out of repo)
+.env
+.env.*

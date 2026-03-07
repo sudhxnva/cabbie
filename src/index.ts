@@ -1,9 +1,8 @@
-import { HARDCODED_APP_CONFIGS, HARDCODED_BOOKING_REQUEST } from '../config/hardcoded';
+import { getAppConfigs, HARDCODED_BOOKING_REQUEST } from '../config/hardcoded';
 import { restoreSnapshot, launchApp, waitForBoot, getConnectedDevices, sleep } from './emulator';
 import { buildMainPrompt, invokeClaudeCode, parseResults } from './claude';
 
 async function main() {
-  const apps = HARDCODED_APP_CONFIGS;
   const request = HARDCODED_BOOKING_REQUEST;
 
   console.log('='.repeat(60));
@@ -13,6 +12,11 @@ async function main() {
   console.log(`Dropoff:  ${request.dropoff.address}`);
   console.log(`Priority: ${request.constraints.priority}`);
   console.log('='.repeat(60));
+
+  // Fetch app configs from DB
+  console.log('\nFetching app configurations from database...');
+  const apps = await getAppConfigs(request.userId);
+  console.log(`Found ${apps.length} active app configurations.`);
 
   // Verify emulators are reachable
   console.log('\nChecking connected devices...');

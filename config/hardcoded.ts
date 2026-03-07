@@ -1,33 +1,31 @@
 import { AppConfig, BookingRequest } from '../src/types';
+import { User, AppConfig as AppConfigModel, connectDB } from '../src/db';
 
-// Simulated MongoDB user document
-export const HARDCODED_USER = {
-  userId: 'demo-user',
-  name: 'Demo User',
-};
+// Initialize DB connection
+connectDB();
 
-// Simulated AppConfig[] — what the user has set up in their profile
-// Update emulatorSerial and snapshotName to match your AVDs
-export const HARDCODED_APP_CONFIGS: AppConfig[] = [
-  {
-    appName: 'Uber',
-    appId: 'com.ubercab',
-    emulatorSerial: 'emulator-5554',
-    snapshotName: 'uber-logged-in',
-    notes: '',
-    memoryFilePath: 'memory/uber.md',
-  },
-  {
-    appName: 'Lyft',
-    appId: 'com.lyft.android',
-    emulatorSerial: 'emulator-5556',
-    snapshotName: 'lyft-logged-in',
-    notes: '',
-    memoryFilePath: 'memory/lyft.md',
-  },
-];
+// Fetch user from DB
+export async function getUser(userId: string) {
+  const user = await User.findOne({ userId });
+  if (!user) throw new Error(`User ${userId} not found`);
+  return user;
+}
 
-// Hardcoded BookingRequest — simulates what voice/frontend would send
+// Fetch app configs for user from DB
+export async function getAppConfigs(userId: string): Promise<AppConfig[]> {
+  const configs = await AppConfigModel.find({ userId, isActive: true });
+  return configs.map(c => ({
+    appName: c.appName,
+    appId: c.appId,
+    emulatorSerial: c.emulatorSerial,
+    snapshotName: c.snapshotName,
+    notes: c.notes,
+    memoryFilePath: c.memoryFilePath,
+  }));
+}
+
+// Hardcoded BookingRequest — simulates what frontend/API would send
+// In production, this would come from API request body
 export const HARDCODED_BOOKING_REQUEST: BookingRequest = {
   userId: 'demo-user',
   pickup: { address: '1800 Williams St, Denver, CO' },
