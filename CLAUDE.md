@@ -1,5 +1,27 @@
 # Cabbie — Claude Code Instructions
 
+## Task Tracking
+
+**All tasks and remaining work are tracked as GitHub Issues:**
+https://github.com/sudhxnva/cabbie/issues
+
+Before starting any work, check open issues. When implementing a feature, reference the issue number in commits. Use `gh issue list` to see current state.
+
+| # | Title | Slice |
+|---|-------|-------|
+| [#1](https://github.com/sudhxnva/cabbie/issues/1) | Verify ADB MCP server works with emulator serial targeting | 1 |
+| [#2](https://github.com/sudhxnva/cabbie/issues/2) | Create AVD snapshots for Uber and Lyft | 1 |
+| [#3](https://github.com/sudhxnva/cabbie/issues/3) | End-to-end test of single emulator agentic loop | 1 |
+| [#4](https://github.com/sudhxnva/cabbie/issues/4) | Two parallel emulators with no cross-device contamination | 2 |
+| [#5](https://github.com/sudhxnva/cabbie/issues/5) | Backend HTTP API (POST /booking/request, POST /booking/confirm, GET /health) | 3 |
+| [#6](https://github.com/sudhxnva/cabbie/issues/6) | MongoDB integration: replace hardcoded config | 3 |
+| [#7](https://github.com/sudhxnva/cabbie/issues/7) | Booking completion flow: sub-agent books confirmed option | 5 |
+| [#8](https://github.com/sudhxnva/cabbie/issues/8) | Memory file update: sub-agent appends navigation notes after each run | 5 |
+| [#9](https://github.com/sudhxnva/cabbie/issues/9) | Docker setup for Vultr deployment | infra |
+| [#10](https://github.com/sudhxnva/cabbie/issues/10) | ElevenLabs voice interface integration | 4 |
+
+---
+
 ## Project Overview
 
 Cabbie is a voice-controlled cab price comparison and booking system for a hackathon. It uses Android emulators controlled by Claude Code sub-agents to navigate multiple cab apps simultaneously, compare prices, and book the best option based on user constraints.
