@@ -10,7 +10,7 @@ Before starting any work, check open issues. When implementing a feature, refere
 | # | Title | Slice |
 |---|-------|-------|
 | [#1](https://github.com/sudhxnva/cabbie/issues/1) | Verify ADB MCP server works with emulator serial targeting | 1 |
-| [#2](https://github.com/sudhxnva/cabbie/issues/2) | Create AVD snapshots for Uber and Lyft | 1 |
+| [#2](https://github.com/sudhxnva/cabbie/issues/2) | Create AVD snapshots for Uber and CU Night Ride | 1 |
 | [#3](https://github.com/sudhxnva/cabbie/issues/3) | End-to-end test of single emulator agentic loop | 1 |
 | [#4](https://github.com/sudhxnva/cabbie/issues/4) | Two parallel emulators with no cross-device contamination | 2 |
 | [#5](https://github.com/sudhxnva/cabbie/issues/5) | Backend HTTP API (POST /booking/request, POST /booking/confirm, GET /health) | 3 |
@@ -34,7 +34,7 @@ Start from the working demo end: emulators launch → Claude Code is invoked →
 
 - **Language**: TypeScript (Node.js), run with `tsx`
 - **Agent**: `@anthropic-ai/claude-code` SDK — `query()` function (no CLI subprocess)
-- **Device control**: ADB MCP server for Android emulator interaction
+- **Device control**: `@devicefarmer/adbkit` (Node.js API, no CLI subprocess) for emulator management; ADB MCP server for sub-agent interaction
 - **Data**: Hardcoded configs (simulating MongoDB) for the demo
 
 ## Directory Structure
@@ -50,6 +50,7 @@ cabbie/
 │   └── sub-agent.md          # Sub-agent prompt template (per-app navigation)
 ├── memory/
 │   ├── uber.md               # Per-app navigation memory (starts empty)
+│   ├── cunightride.md
 │   └── lyft.md
 ├── screenshots/              # Agents save screenshots here per step
 ├── config/
@@ -114,14 +115,15 @@ cabbie/
 ### Phase 2: Hardcoded Config (`config/hardcoded.ts`)
 Simulate MongoDB + frontend input:
 - `HARDCODED_USER`: demo user
-- `HARDCODED_APP_CONFIGS`: 2 apps (Uber on emulator-5554, Lyft on emulator-5556)
+- `HARDCODED_APP_CONFIGS`: 2 apps (Uber on emulator-5554, CU Night Ride on emulator-5556)
 - `HARDCODED_BOOKING_REQUEST`: cheapest cab from hardcoded pickup → dropoff
 
 ### Phase 3: Emulator Manager (`src/emulator.ts`)
-ADB command wrappers using `child_process.execSync`:
-- `restoreSnapshot(serial, snapshot)` — `adb -s <serial> emu avd snapshot load <snapshot>`
-- `launchApp(serial, appId)` — `adb -s <serial> shell monkey -p <appId> -c android.intent.category.LAUNCHER 1`
-- `waitForBoot(serial)` — poll `adb -s <serial> shell getprop sys.boot_completed` until "1"
+Uses `@devicefarmer/adbkit` (Node.js API) — no CLI subprocesses:
+- `restoreSnapshot(serial, snapshot)` — connects to emulator console TCP port, sends `avd snapshot load <snapshot>` (handles auth token from `~/.emulator_console_auth_token`)
+- `launchApp(serial, appId)` — `client.getDevice(serial).shell('monkey -p <appId> ...')`
+- `waitForBoot(serial)` — polls `client.getDevice(serial).shell('getprop sys.boot_completed')` until "1"
+- `getConnectedDevices()` — `client.listDevices()` filtered to `type === 'device'` (async)
 
 ### Phase 4: Prompts
 
@@ -139,7 +141,7 @@ ADB command wrappers using `child_process.execSync`:
 - `buildSubAgentPrompt(app, request)` — load sub-agent template, fill placeholders + inject memory file content
 - `runSubAgent(app, request)` — call SDK `query()` with:
   - `permission_mode: 'bypassPermissions'`
-  - `mcp_servers: { adb: { type: 'stdio', command: 'npx', args: ['-y', 'android-adb-mcp'] } }`
+  - `mcp_servers: { adb: { type: 'stdio', command: 'npx', args: ['-y', 'adb-mcp'] } }`
   - `allowed_tools: ['mcp__adb__*', 'Read', 'Write']`
   - `output_format: { type: 'json_schema', schema: PriceResultSchema }`
   - `max_turns: 30`, `max_budget_usd: 0.50`
@@ -169,23 +171,34 @@ const results = await Promise.all(
 The ADB MCP server is configured **per-query** in the SDK options — no global `~/.claude.json` changes needed:
 
 ```typescript
-mcp_servers: {
+mcpServers: {
   adb: {
-    type: 'stdio',
     command: 'npx',
-    args: ['-y', 'android-adb-mcp']
+    args: ['-y', 'adb-mcp']
   }
 }
 ```
 
-Verify exact package name (`android-adb-mcp`) before implementation — check npm for the correct package.
+**Verified package: `adb-mcp`** (not `android-adb-mcp`). Confirmed working via `npx -y adb-mcp --help`.
+
+## AVD Snapshots
+
+| Emulator | AVD | App | Package | Snapshot |
+|---|---|---|---|---|
+| emulator-5554 | `Pixel_8_2_-_Uber` | Uber | `com.ubercab` | `uber-logged-in` |
+| emulator-5556 | `Pixel_8_2_-_CU_NightRide` | CU Night Ride | `com.sparelabs.platform.rider.cunightride` | `cunightride-logged-in` |
+| emulator-5558 | `Pixel_8` | Lyft | `com.lyft.android` | `lyft-logged-in` |
+
+All three snapshots restore to a logged-in home screen ready for destination entry. All verified via `restoreSnapshot()` + `launchApp()` tests.
 
 ## Smoke Test Before Full Run
 ```bash
 adb devices                                              # both serials visible
 adb -s emulator-5554 shell getprop sys.boot_completed   # should print "1"
-npx -y android-adb-mcp --help                           # verify MCP package works
+npx -y adb-mcp --help                                   # verify MCP package works
 ```
+
+**Note:** `src/smoke-test.ts` (issue #1 verification) must be run from a terminal **outside** any active Claude Code session — the SDK spawns a `claude` subprocess which is blocked inside nested sessions.
 
 ## Key Rules
 - Every ADB command in prompts must include `-s <serial>` — no exceptions

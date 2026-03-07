@@ -20,7 +20,7 @@ async function main() {
 
   // Verify emulators are reachable
   console.log('\nChecking connected devices...');
-  const devices = getConnectedDevices();
+  const devices = await getConnectedDevices();
   console.log('Connected:', devices.length ? devices.join(', ') : 'none');
 
   const missingDevices = apps.filter(a => !devices.includes(a.emulatorSerial));
@@ -36,7 +36,7 @@ async function main() {
   for (const app of apps) {
     if (!devices.includes(app.emulatorSerial)) continue;
     try {
-      restoreSnapshot(app.emulatorSerial, app.snapshotName);
+      await restoreSnapshot(app.emulatorSerial, app.snapshotName);
     } catch (e) {
       console.warn(`  Snapshot restore failed for ${app.appName}, continuing anyway`);
     }
@@ -57,7 +57,7 @@ async function main() {
   for (const app of apps) {
     if (!devices.includes(app.emulatorSerial)) continue;
     try {
-      launchApp(app.emulatorSerial, app.appId);
+      await launchApp(app.emulatorSerial, app.appId);
     } catch (e) {
       console.warn(`  Failed to launch ${app.appName}: ${(e as Error).message}`);
     }

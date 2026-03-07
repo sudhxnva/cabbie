@@ -1,51 +1,118 @@
-import { execSync, spawnSync } from 'child_process';
+import Adb, { Device } from '@devicefarmer/adbkit';
+import * as net from 'net';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
-function adb(serial: string, args: string): string {
-  const result = spawnSync('adb', ['-s', serial, ...args.split(' ')], {
-    encoding: 'utf8',
-    timeout: 30_000,
+const client = Adb.createClient();
+
+async function readStream(stream: NodeJS.ReadableStream): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks).toString().trim()));
+    stream.on('error', reject);
   });
-  if (result.error) throw result.error;
-  return (result.stdout || '').trim();
 }
 
-export function restoreSnapshot(serial: string, snapshotName: string): void {
-  console.log(`  [${serial}] Restoring snapshot '${snapshotName}'...`);
-  // Send emu avd snapshot load command via adb emu
-  const result = spawnSync('adb', ['-s', serial, 'emu', 'avd', 'snapshot', 'load', snapshotName], {
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
-  if (result.error) {
-    console.warn(`  [${serial}] Snapshot restore warning: ${result.error.message}`);
+// Send a command to the emulator console via TCP (port = serial number, e.g. emulator-5554 → 5554)
+// Handles the auth handshake required by modern Android emulators.
+async function emulatorConsoleCommand(serial: string, command: string): Promise<void> {
+  const port = parseInt(serial.replace('emulator-', ''), 10);
+  const tokenPath = path.join(os.homedir(), '.emulator_console_auth_token');
+
+  let authToken: string | null = null;
+  try {
+    authToken = fs.readFileSync(tokenPath, 'utf8').trim();
+  } catch {
+    // Older emulators don't require auth
   }
+
+  return new Promise((resolve, reject) => {
+    const sock = new net.Socket();
+    sock.setTimeout(30_000);
+
+    let buffer = '';
+    // States: 'banner' → 'auth' → 'command' → 'done'
+    let state: 'banner' | 'auth' | 'command' | 'done' = 'banner';
+
+    sock.connect(port, '127.0.0.1');
+
+    sock.on('data', (data: Buffer) => {
+      buffer += data.toString();
+
+      if (state === 'banner' && buffer.includes('OK')) {
+        buffer = '';
+        if (authToken) {
+          state = 'auth';
+          sock.write(`auth ${authToken}\n`);
+        } else {
+          state = 'command';
+          sock.write(`${command}\n`);
+        }
+      } else if (state === 'auth' && buffer.includes('OK')) {
+        buffer = '';
+        state = 'command';
+        sock.write(`${command}\n`);
+      } else if (state === 'auth' && buffer.includes('KO')) {
+        sock.destroy();
+        reject(new Error(`Emulator auth failed for ${serial}`));
+      } else if (state === 'command') {
+        if (buffer.includes('OK')) {
+          state = 'done';
+          sock.destroy();
+          resolve();
+        } else if (buffer.includes('KO')) {
+          sock.destroy();
+          reject(new Error(`Emulator command failed: ${buffer.trim()}`));
+        }
+      }
+    });
+
+    sock.on('error', reject);
+    sock.on('timeout', () => {
+      sock.destroy();
+      reject(new Error(`Emulator console timeout for ${serial}`));
+    });
+  });
 }
 
-export function launchApp(serial: string, appId: string): void {
+export async function restoreSnapshot(serial: string, snapshotName: string): Promise<void> {
+  console.log(`  [${serial}] Restoring snapshot '${snapshotName}'...`);
+  await emulatorConsoleCommand(serial, `avd snapshot load ${snapshotName}`);
+  console.log(`  [${serial}] Snapshot restored.`);
+}
+
+export async function launchApp(serial: string, appId: string): Promise<void> {
   console.log(`  [${serial}] Launching ${appId}...`);
-  adb(serial, `shell monkey -p ${appId} -c android.intent.category.LAUNCHER 1`);
+  const device = client.getDevice(serial);
+  const stream = await device.shell(`monkey -p ${appId} -c android.intent.category.LAUNCHER 1`);
+  await readStream(stream);
 }
 
 export async function waitForBoot(serial: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now();
   console.log(`  [${serial}] Waiting for boot...`);
+  const device = client.getDevice(serial);
   while (Date.now() - start < timeoutMs) {
-    const val = adb(serial, 'shell getprop sys.boot_completed');
-    if (val === '1') {
-      console.log(`  [${serial}] Boot complete.`);
-      return;
+    try {
+      const stream = await device.shell('getprop sys.boot_completed');
+      const val = await readStream(stream);
+      if (val === '1') {
+        console.log(`  [${serial}] Boot complete.`);
+        return;
+      }
+    } catch {
+      // Device not ready yet, keep polling
     }
     await sleep(2000);
   }
   throw new Error(`[${serial}] Timed out waiting for boot after ${timeoutMs}ms`);
 }
 
-export function getConnectedDevices(): string[] {
-  const result = spawnSync('adb', ['devices'], { encoding: 'utf8' });
-  const lines = (result.stdout || '').split('\n').slice(1); // skip "List of devices attached"
-  return lines
-    .filter(l => l.includes('\tdevice'))
-    .map(l => l.split('\t')[0].trim());
+export async function getConnectedDevices(): Promise<string[]> {
+  const devices = await client.listDevices();
+  return devices.filter((d: Device) => d.type === 'device').map((d: Device) => d.id);
 }
 
 export function sleep(ms: number): Promise<void> {
