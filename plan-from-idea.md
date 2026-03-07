@@ -10,7 +10,7 @@
 A system with three connected pieces:
 1. **Voice/text interface** — ElevenLabs agent parses user intent and presents results
 2. **Backend** — receives structured booking requests, manages emulators, triggers orchestration
-3. **Agent layer** — Claude Code main agent spawns sub-agents, each controlling one emulator via ADB MCP to scrape prices and book
+3. **Agent layer** — Node.js orchestrator uses `@anthropic-ai/claude-code` SDK to run sub-agents in parallel via `Promise.all`, each controlling one emulator via ADB MCP to scrape prices and book
 
 The repos are separate. This plan defines the **contracts between them** and the **slice-by-slice build order**. Implementation details live in each repo.
 
@@ -36,7 +36,7 @@ These are fixed. Everything else is flexible.
 }
 ```
 
-### PriceResult — sub-agent → main agent
+### PriceResult — sub-agent → Node.js orchestrator
 ```typescript
 {
   appName: string
@@ -96,15 +96,15 @@ If a slice hits a wall, see the **If Stuck** note before going deep on a rabbit 
 - Load sub-agent prompt template
 - Fill in placeholders (device serial, app name, pickup, dropoff, memory content)
 - Restore AVD snapshot before starting
-- Invoke Claude Code with the filled prompt
-- Extract JSON from output
+- Invoke sub-agent via SDK `query()` with ADB MCP server + `output_format: json_schema`
+- Collect typed `PriceResult` directly from `ResultMessage` — no parsing needed
 - Print ranked results to stdout
 
 **Done when:** Running the orchestrator script with hardcoded input prints a valid `PriceResult` with at least one app's options.
 
 **If stuck:**
-- If Claude Code struggles to navigate the app UI, make the sub-agent prompt more step-by-step. The screenshot+OCR loop is the core mechanism — if it's hallucinating UI elements, add an explicit instruction to only act on what it can see in the current screenshot.
-- If JSON extraction from Claude's output is unreliable, instruct the prompt to output ONLY JSON with no surrounding text, and use a regex fallback to extract the first `{...}` block.
+- If the sub-agent struggles to navigate the app UI, make the prompt more step-by-step. The screenshot+OCR loop is the core mechanism — if it's hallucinating UI elements, add an explicit instruction to only act on what it can see in the current screenshot.
+- JSON extraction is handled by the SDK's `output_format: json_schema` — if the result is missing, check `ResultMessage` fields and ensure the schema matches `PriceResult`.
 
 ---
 
@@ -117,8 +117,8 @@ Before writing any orchestration code, manually confirm the ADB MCP server can t
 
 **What changes from Slice 1:**
 - APP_CONFIGS gets a second entry pointing to emulator-5556
-- Sub-agents run in parallel not sequentially
-- Main agent aggregates both `PriceResult` arrays and ranks by constraint
+- `Promise.all(apps.map(app => runSubAgent(app, request)))` runs both in parallel
+- Node.js aggregates both typed `PriceResult` arrays and ranks by constraint
 
 **Done when:** Both apps' prices appear in output at roughly the same time, and screenshots confirm each agent only touched its own emulator.
 

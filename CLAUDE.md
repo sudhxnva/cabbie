@@ -33,7 +33,7 @@ Start from the working demo end: emulators launch → Claude Code is invoked →
 ## Tech Stack
 
 - **Language**: TypeScript (Node.js), run with `tsx`
-- **Agent**: Claude Code CLI (`claude --print --dangerously-skip-permissions`)
+- **Agent**: `@anthropic-ai/claude-code` SDK — `query()` function (no CLI subprocess)
 - **Device control**: ADB MCP server for Android emulator interaction
 - **Data**: Hardcoded configs (simulating MongoDB) for the demo
 
@@ -42,12 +42,11 @@ Start from the working demo end: emulators launch → Claude Code is invoked →
 ```
 cabbie/
 ├── src/
-│   ├── index.ts              # Entry point — emulator launch + Claude invocation
+│   ├── index.ts              # Entry point — emulator launch + parallel SDK queries
 │   ├── types.ts              # BookingRequest, AppConfig, PriceResult types
 │   ├── emulator.ts           # ADB wrappers: restoreSnapshot, launchApp, waitForBoot
-│   └── claude.ts             # Build prompts, invoke claude CLI, parse JSON output
+│   └── claude.ts             # Build prompts, run SDK query(), aggregate results
 ├── prompts/
-│   ├── main-agent.md         # Main Claude Code orchestrator prompt template
 │   └── sub-agent.md          # Sub-agent prompt template (per-app navigation)
 ├── memory/
 │   ├── uber.md               # Per-app navigation memory (starts empty)
@@ -130,22 +129,29 @@ ADB command wrappers using `child_process.execSync`:
 - Device serial is `{{EMULATOR_SERIAL}}` — target exclusively, never another device
 - **Always take a screenshot first before any action**
 - Phase sequence: screenshot → locate pickup → enter `{{PICKUP}}` → enter `{{DROPOFF}}` → confirm → read price list
-- Return ONLY valid PriceResult JSON, no prose
+- Output is captured via SDK `output_format` JSON schema — no prose, no wrapper tags needed
 - Save screenshots to `screenshots/{{APP_NAME}}-<step>.png` at each phase
 - On failure: `{ appName, success: false, error: "...", options: [] }`
 
-#### `prompts/main-agent.md`
-- Spawn one sub-agent per app using the Agent tool with filled sub-agent prompt
-- Run sub-agents in parallel
-- Aggregate all PriceResult JSONs
-- Rank by constraint (cheapest = sort priceMin asc, fastest = sort etaMinutes asc)
-- Wrap final output in `<RESULTS>...</RESULTS>` tags
+> No `main-agent.md` needed — Node.js is the orchestrator.
 
-### Phase 5: Claude Invoker (`src/claude.ts`)
-- `buildMainPrompt(request, apps)` — load template, fill placeholders
-- `buildSubAgentPrompt(app, request)` — load sub-agent template, fill all placeholders including memory file content
-- `invokeClaudeCode(prompt)` — `spawnSync('claude', ['--print', '--dangerously-skip-permissions', '-p', prompt])`
-- `parseResults(output)` — regex extract content between `<RESULTS>...</RESULTS>`, JSON.parse
+### Phase 5: Claude SDK Invoker (`src/claude.ts`)
+- `buildSubAgentPrompt(app, request)` — load sub-agent template, fill placeholders + inject memory file content
+- `runSubAgent(app, request)` — call SDK `query()` with:
+  - `permission_mode: 'bypassPermissions'`
+  - `mcp_servers: { adb: { type: 'stdio', command: 'npx', args: ['-y', 'android-adb-mcp'] } }`
+  - `allowed_tools: ['mcp__adb__*', 'Read', 'Write']`
+  - `output_format: { type: 'json_schema', schema: PriceResultSchema }`
+  - `max_turns: 30`, `max_budget_usd: 0.50`
+- Collect `ResultMessage` from the async generator, return typed `PriceResult`
+- `rankResults(results, constraint)` — sort by priority in Node.js (no agent needed)
+
+```typescript
+// Parallel sub-agents — Node.js is the orchestrator
+const results = await Promise.all(
+  apps.map(app => runSubAgent(app, request))
+)
+```
 
 ### Phase 6: Entry Point (`src/index.ts`)
 ```typescript
@@ -153,48 +159,38 @@ ADB command wrappers using `child_process.execSync`:
 2. Restore emulator snapshots + wait for boot
 3. Launch cab apps
 4. Sleep 5s for app home screens to load
-5. Build main agent prompt
-6. Invoke Claude Code
-7. Parse + print ranked results
+5. Run sub-agents in parallel via Promise.all
+6. Rank results in Node.js
+7. Print ranked results
 ```
-
-## Sub-agent Spawning Strategy
-
-**Primary (Option A):** Node.js → single `claude` process → main-agent prompt → Claude uses Agent tool internally to spawn sub-agents.
-
-**Fallback (Option B):** If Option A output parsing proves unreliable, switch to Node.js spawning N parallel `claude` processes:
-```typescript
-const results = await Promise.all(
-  apps.map(app => invokeClaudeCode(buildSubAgentPrompt(app, request)))
-)
-```
-Switch to Option B if debugging Option A eats >30min.
 
 ## ADB MCP Configuration
 
-Claude Code needs an ADB MCP server. Add to `~/.claude.json` or `.claude/settings.json`:
-```json
-{
-  "mcpServers": {
-    "adb": {
-      "command": "npx",
-      "args": ["-y", "android-adb-mcp"]
-    }
+The ADB MCP server is configured **per-query** in the SDK options — no global `~/.claude.json` changes needed:
+
+```typescript
+mcp_servers: {
+  adb: {
+    type: 'stdio',
+    command: 'npx',
+    args: ['-y', 'android-adb-mcp']
   }
 }
 ```
-Verify exact package name before implementation.
+
+Verify exact package name (`android-adb-mcp`) before implementation — check npm for the correct package.
 
 ## Smoke Test Before Full Run
 ```bash
 adb devices                                              # both serials visible
 adb -s emulator-5554 shell getprop sys.boot_completed   # should print "1"
-claude --print -p "What is 2+2?"                        # verify claude CLI works
+npx -y android-adb-mcp --help                           # verify MCP package works
 ```
 
 ## Key Rules
 - Every ADB command in prompts must include `-s <serial>` — no exceptions
-- `screenshots/` directory must exist before Claude Code runs
-- Hard timeout: 3 minutes on Claude CLI invocation
-- Sub-agent prompts must include memory file content (even if empty) so the structure is there
-- Main agent must output ONLY the `<RESULTS>` block as final output — no trailing prose
+- `screenshots/` directory must exist before agents run
+- Budget cap: `max_budget_usd: 0.50` per sub-agent, `max_turns: 30`
+- Sub-agent prompts must include memory file content (even if empty)
+- Output is structured via `output_format` JSON schema — no `<RESULTS>` tags needed
+- Node.js ranks results after `Promise.all` resolves — agents do not rank
