@@ -1,5 +1,5 @@
 import { getAppConfigs, HARDCODED_BOOKING_REQUEST } from '../config/hardcoded';
-import { restoreSnapshot, launchApp, waitForBoot, getConnectedDevices, sleep } from './emulator';
+import { restoreSnapshot, launchApp, launchEmulator, waitForBoot, getConnectedDevices, sleep } from './emulator';
 import { runSubAgent, rankResults } from './claude';
 import { checkAvailability } from './availability';
 
@@ -23,17 +23,29 @@ async function main() {
   const devices = await getConnectedDevices();
   console.log('Connected:', devices.length ? devices.join(', ') : 'none');
 
-  const missingDevices = apps.filter(a => !devices.includes(a.emulatorSerial));
-  if (missingDevices.length > 0) {
-    console.warn(
-      `Warning: These emulators are not connected: ${missingDevices.map(a => a.emulatorSerial).join(', ')}`
+  const missingApps = apps.filter(a => !devices.includes(a.emulatorSerial));
+  if (missingApps.length > 0) {
+    console.log(`\nLaunching missing emulators: ${missingApps.map(a => a.emulatorSerial).join(', ')}`);
+    await Promise.all(
+      missingApps.map(a =>
+        launchEmulator(a.avdName, a.emulatorSerial).catch(e => {
+          console.warn(`  Failed to launch ${a.appName} emulator: ${(e as Error).message}`);
+        })
+      )
     );
-    console.warn('Proceeding anyway — sub-agents will report errors for unreachable devices.\n');
+  }
+
+  // Refresh device list after launching
+  const allDevices = await getConnectedDevices();
+  const stillMissing = apps.filter(a => !allDevices.includes(a.emulatorSerial));
+  if (stillMissing.length > 0) {
+    console.warn(`Warning: Could not start emulators: ${stillMissing.map(a => a.emulatorSerial).join(', ')}`);
+    console.warn('Proceeding without them — sub-agents will report errors.\n');
   }
 
   console.log('\nRestoring emulator snapshots...');
   for (const app of apps) {
-    if (!devices.includes(app.emulatorSerial)) continue;
+    if (!allDevices.includes(app.emulatorSerial)) continue;
     try {
       await restoreSnapshot(app.emulatorSerial, app.snapshotName);
     } catch (e) {
@@ -44,7 +56,7 @@ async function main() {
   console.log('\nWaiting for emulators to boot...');
   await Promise.all(
     apps
-      .filter(a => devices.includes(a.emulatorSerial))
+      .filter(a => allDevices.includes(a.emulatorSerial))
       .map(a =>
         waitForBoot(a.emulatorSerial).catch(() => {
           console.warn(`  ${a.emulatorSerial} boot wait timed out, continuing`);
@@ -54,7 +66,7 @@ async function main() {
 
   console.log('\nLaunching cab apps...');
   for (const app of apps) {
-    if (!devices.includes(app.emulatorSerial)) continue;
+    if (!allDevices.includes(app.emulatorSerial)) continue;
     try {
       await launchApp(app.emulatorSerial, app.appId);
     } catch (e) {

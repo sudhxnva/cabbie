@@ -3,6 +3,12 @@ import * as net from 'net';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { spawn } from 'child_process';
+
+const EMULATOR_BINARY =
+  process.env.ANDROID_HOME
+    ? path.join(process.env.ANDROID_HOME, 'emulator', 'emulator')
+    : '/Users/sudhanva/Library/Android/sdk/emulator/emulator';
 
 const client = Adb.createClient();
 
@@ -81,6 +87,36 @@ export async function restoreSnapshot(serial: string, snapshotName: string): Pro
   console.log(`  [${serial}] Restoring snapshot '${snapshotName}'...`);
   await emulatorConsoleCommand(serial, `avd snapshot load ${snapshotName}`);
   console.log(`  [${serial}] Snapshot restored.`);
+}
+
+// Launch an AVD in the background. The port is derived from the expected serial
+// (e.g. emulator-5554 → -port 5554). Returns once the serial appears in adb devices.
+export async function launchEmulator(
+  avdName: string,
+  expectedSerial: string,
+  timeoutMs = 120_000
+): Promise<void> {
+  const port = parseInt(expectedSerial.replace('emulator-', ''), 10);
+  console.log(`  Launching AVD '${avdName}' on port ${port}...`);
+
+  const proc = spawn(
+    EMULATOR_BINARY,
+    ['-avd', avdName, '-port', String(port), '-no-snapshot-save'],
+    { detached: true, stdio: 'ignore' }
+  );
+  proc.unref();
+
+  // Wait until the serial appears in adb devices
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const devices = await getConnectedDevices();
+    if (devices.includes(expectedSerial)) {
+      console.log(`  [${expectedSerial}] Emulator online.`);
+      return;
+    }
+    await sleep(3000);
+  }
+  throw new Error(`Timed out waiting for ${expectedSerial} to appear after launching '${avdName}'`);
 }
 
 export async function launchApp(serial: string, appId: string): Promise<void> {

@@ -57,6 +57,7 @@ export interface IAppConfig {
   userId: string;
   appName: string;
   appId: string;
+  avdName: string;
   emulatorSerial: string;
   snapshotName: string;
   notes: string;
@@ -88,6 +89,7 @@ const appConfigSchema = new mongoose.Schema<IAppConfig>({
   userId: { type: String, required: true },
   appName: { type: String, required: true },
   appId: { type: String, required: true },
+  avdName: { type: String, required: true },
   emulatorSerial: { type: String, required: true },
   snapshotName: { type: String, required: true },
   notes: { type: String, default: '' },

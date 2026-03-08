@@ -28,6 +28,7 @@ export interface AppAvailability {
 export interface AppConfig {
   appName: string;
   appId: string; // android package name e.g. "com.ubercab"
+  avdName: string; // AVD name used to launch the emulator e.g. "Pixel_8_2_-_Uber"
   emulatorSerial: string; // e.g. "emulator-5554"
   snapshotName: string; // AVD snapshot to restore before each run
   notes: string;

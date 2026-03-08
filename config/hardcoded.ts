@@ -17,6 +17,7 @@ export async function getAppConfigs(userId: string): Promise<AppConfig[]> {
   return configs.map(c => ({
     appName: c.appName,
     appId: c.appId,
+    avdName: c.avdName,
     emulatorSerial: c.emulatorSerial,
     snapshotName: c.snapshotName,
     notes: c.notes,
