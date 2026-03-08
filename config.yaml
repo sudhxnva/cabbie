@@ -1,0 +1,2 @@
+device:
+  name: "emulator-5556" # Device identifier from 'adb devices'
