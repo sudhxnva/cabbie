@@ -10,8 +10,12 @@ export interface BookingRequest {
     maxWaitMinutes?: number;
   };
   alexaContext?: {
+    // access token that comes with every Alexa request; it expires in ~60s
     apiAccessToken: string;
     apiEndpoint: string;
+    // account‑linking refresh token so our backend can obtain a fresh access
+    // token when the original one times out (see alexa_service.ts).
+    refreshToken?: string;
   };
 }
 

@@ -23,22 +23,28 @@ describe('Cabbie Backend API', () => {
       userId: 'test-user',
       pickup: { address: 'Pickup Location' },
       dropoff: { address: 'Dropoff Location' },
-      constraints: { priority: 'cheapest' }
+      constraints: { priority: 'cheapest' },
+      alexaContext: {
+        apiAccessToken: 'dummy',
+        apiEndpoint: 'https://api.amazonalexa.com',
+        refreshToken: 'refresh-dummy',
+      },
     };
 
-    it('should return 200 and ranked results on success', async () => {
-      const mockResults = [
-        { appName: 'Uber', name: 'UberX', price: '$15', etaMinutes: 5, category: 'standard' }
-      ];
-      (orchestrator.orchestrate as jest.Mock).mockResolvedValue(mockResults);
+    it('should return 200 and a processing status when a valid request is received', async () => {
+      (orchestrator.orchestrate as jest.Mock).mockResolvedValue([]);
 
       const response = await request(app)
         .post('/booking/request')
         .send(validRequest);
 
       expect(response.status).toBe(200);
-      expect(response.body).toEqual(mockResults);
-      expect(orchestrator.orchestrate).toHaveBeenCalledWith(validRequest);
+      expect(response.body).toEqual({
+        status: 'processing',
+        message: 'Orchestration started in background',
+        estimatedCompletion: '1-2 minutes'
+      });
+      expect(orchestrator.orchestrate).toHaveBeenCalledWith(validRequest, expect.any(Function));
     });
 
     it('should return 400 if request body is invalid', async () => {
@@ -50,16 +56,8 @@ describe('Cabbie Backend API', () => {
       expect(response.body).toEqual({ error: 'Invalid BookingRequest' });
     });
 
-    it('should return 500 if orchestration fails', async () => {
-      (orchestrator.orchestrate as jest.Mock).mockRejectedValue(new Error('Claude failed'));
-
-      const response = await request(app)
-        .post('/booking/request')
-        .send(validRequest);
-
-      expect(response.status).toBe(500);
-      expect(response.body.error).toBe('Orchestration failed');
-    });
+    // orchestration failures happen asynchronously and do not affect the
+    // immediate response, so we don't assert a 500 anymore.
   });
 
   describe('POST /booking/confirm', () => {

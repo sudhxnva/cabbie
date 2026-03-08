@@ -36,4 +36,11 @@ export const HARDCODED_BOOKING_REQUEST: BookingRequest = {
   constraints: {
     priority: 'cheapest',
   },
+  // include a placeholder alexaContext for local debugging; real tokens are
+  // provided by the Alexa skill when invoked from voice.
+  alexaContext: {
+    apiAccessToken: 'dummy-token',
+    apiEndpoint: 'https://api.amazonalexa.com',
+    refreshToken: 'dummy-refresh',
+  },
 };

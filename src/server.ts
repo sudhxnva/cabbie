@@ -32,21 +32,32 @@ app.post('/booking/request', async (req: Request, res: Response) => {
     estimatedCompletion: '1-2 minutes'
   });
 
+  // prepare an optional notification helper if the caller supplied alexaContext
+  let notify: ((msg: string) => Promise<void>) | undefined;
+  if (request.alexaContext) {
+    notify = async (msg: string) => {
+      try {
+        await setAlexaReminder(
+          {
+            accessToken: request.alexaContext!.apiAccessToken,
+            apiEndpoint: request.alexaContext!.apiEndpoint,
+            refreshToken: request.alexaContext!.refreshToken,
+          },
+          msg,
+        );
+      } catch (e) {
+        // already logged inside setAlexaReminder; swallow to avoid crashing
+      }
+    };
+  }
+
   // Run the long-running orchestrator in the background
   try {
-    const results = await orchestrate(request);
+    const results = await orchestrate(request, notify);
     console.log(`[ALEXA/GATEWAY] Orchestration complete for ${request.userId}. Found ${results.length} results.`);
 
-    // If the request came from Alexa, send a reminder with the results
-    if (request.alexaContext && results.length > 0) {
-      const best = results[0];
-      const message = `Cabbie found a ride! The cheapest is ${best.appName} ${best.name} for ${best.price}.`;
-      await setAlexaReminder(
-        request.alexaContext.apiAccessToken,
-        request.alexaContext.apiEndpoint,
-        message
-      );
-    }
+    // the orchestrator will have already sent incremental reminders; you can
+    // still send a final one here if you want
   } catch (error: any) {
     console.error('[ALEXA/GATEWAY] Background orchestration failed:', error.message);
   }
