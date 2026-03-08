@@ -37,6 +37,14 @@ async function seed() {
       notes: '',
       memoryFilePath: 'memory/cunightride.md',
       isActive: true,
+      availability: {
+        serviceWindows: [
+          // Weekdays Mon–Fri: 7 PM – midnight
+          { days: [1, 2, 3, 4, 5], startHour: 19, startMinute: 0, endHour: 0, endMinute: 0, timezone: 'America/Denver' },
+          // Weekends Sat–Sun: 7 PM – 1 AM
+          { days: [6, 0], startHour: 19, startMinute: 0, endHour: 1, endMinute: 0, timezone: 'America/Denver' },
+        ],
+      },
     },
     {
       userId: 'demo-user',

@@ -21,6 +21,7 @@ export async function getAppConfigs(userId: string): Promise<AppConfig[]> {
     snapshotName: c.snapshotName,
     notes: c.notes,
     memoryFilePath: c.memoryFilePath,
+    availability: c.availability,
   }));
 }
 

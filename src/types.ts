@@ -11,6 +11,20 @@ export interface BookingRequest {
   };
 }
 
+export interface ServiceWindow {
+  days: number[];       // 0=Sun, 1=Mon, ..., 6=Sat
+  startHour: number;    // local time, 0-23
+  startMinute: number;
+  endHour: number;      // local time — if less than startHour, crosses midnight
+  endMinute: number;
+  timezone: string;     // IANA tz, e.g. "America/Denver"
+}
+
+export interface AppAvailability {
+  serviceWindows?: ServiceWindow[];
+  // Future: serviceArea for geofencing (pickupBounds, dropoffBounds)
+}
+
 export interface AppConfig {
   appName: string;
   appId: string; // android package name e.g. "com.ubercab"
@@ -18,6 +32,7 @@ export interface AppConfig {
   snapshotName: string; // AVD snapshot to restore before each run
   notes: string;
   memoryFilePath: string; // path to this app's navigation memory file
+  availability?: AppAvailability; // if absent, always available
 }
 
 export interface RideOption {

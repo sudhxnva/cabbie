@@ -13,7 +13,7 @@ if (!MONGO_URI) {
 
 export async function connectDB() {
   try {
-    await mongoose.connect(MONGO_URI);
+    await mongoose.connect(MONGO_URI!);
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('MongoDB connection error:', error);
@@ -62,8 +62,27 @@ export interface IAppConfig {
   notes: string;
   memoryFilePath: string;
   isActive: boolean;
+  availability?: {
+    serviceWindows?: {
+      days: number[];
+      startHour: number;
+      startMinute: number;
+      endHour: number;
+      endMinute: number;
+      timezone: string;
+    }[];
+  };
   createdAt: Date;
 }
+
+const serviceWindowSchema = new mongoose.Schema({
+  days: [Number],
+  startHour: Number,
+  startMinute: Number,
+  endHour: Number,
+  endMinute: Number,
+  timezone: String,
+}, { _id: false });
 
 const appConfigSchema = new mongoose.Schema<IAppConfig>({
   userId: { type: String, required: true },
@@ -74,6 +93,9 @@ const appConfigSchema = new mongoose.Schema<IAppConfig>({
   notes: { type: String, default: '' },
   memoryFilePath: { type: String, required: true },
   isActive: { type: Boolean, default: true },
+  availability: {
+    serviceWindows: [serviceWindowSchema],
+  },
   createdAt: { type: Date, default: Date.now },
 });
 
