@@ -3,7 +3,7 @@
 ## Service Hours
 - **Weekdays**: 7:00 PM – 12:00 AM (midnight)
 - **Weekends**: 7:00 PM – 1:00 AM
-- If the app shows "No trips available" or similar outside these hours, return success: false with an appropriate error message.
+- If the app shows "No trips available" or similar, stop trying to book a ride on this app
 
 ## UI Notes
 - Home screen has a "Where to?" destination field and a pre-filled pickup field
