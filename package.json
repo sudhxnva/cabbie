@@ -40,6 +40,9 @@
     "@anthropic-ai/claude-agent-sdk": "^0.2.71",
     "@anthropic-ai/claude-code": "^2.1.71",
     "@devicefarmer/adbkit": "^3.3.8",
+    "ask-sdk-core": "^2.14.0",
+    "ask-sdk-model": "^1.86.0",
+    "axios": "^1.13.6",
     "dotenv": "^16.6.1",
     "mongoose": "^8.9.5"
   }

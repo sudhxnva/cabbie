@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { orchestrate } from './orchestrator';
 import { BookingRequest } from './types';
+import { setAlexaReminder } from './alexa_service';
 
 export const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,7 +15,7 @@ app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
-// POST /booking/request — accepts BookingRequest, runs orchestration, returns ranked results
+// POST /booking/request — accepts BookingRequest, runs orchestration, returns results
 app.post('/booking/request', async (req: Request, res: Response) => {
   const request: BookingRequest = req.body;
 
@@ -22,43 +23,44 @@ app.post('/booking/request', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Invalid BookingRequest' });
   }
 
-  console.log(`Received booking request for user: ${request.userId}`);
+  console.log(`[ALEXA/GATEWAY] Received booking request to search: ${request.pickup.address} -> ${request.dropoff.address}`);
 
-  // Create a timeout promise
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => {
-      reject(new Error('Orchestration timed out after 180 seconds'));
-    }, 180_000);
+  // Return success immediately so the Cloud Lambda doesn't hang (8s timeout)
+  res.json({
+    status: 'processing',
+    message: 'Orchestration started in background',
+    estimatedCompletion: '1-2 minutes'
   });
 
+  // Run the long-running orchestrator in the background
   try {
-    // Race between orchestration and timeout
-    const results = await Promise.race([
-      orchestrate(request),
-      timeoutPromise
-    ]);
+    const results = await orchestrate(request);
+    console.log(`[ALEXA/GATEWAY] Orchestration complete for ${request.userId}. Found ${results.length} results.`);
 
-    res.json(results);
+    // If the request came from Alexa, send a reminder with the results
+    if (request.alexaContext && results.length > 0) {
+      const best = results[0];
+      const message = `Cabbie found a ride! The cheapest is ${best.appName} ${best.name} for ${best.price}.`;
+      await setAlexaReminder(
+        request.alexaContext.apiAccessToken,
+        request.alexaContext.apiEndpoint,
+        message
+      );
+    }
   } catch (error: any) {
-    console.error('Error during booking request:', error.message);
-    const status = error.message.includes('timed out') ? 504 : 500;
-    res.status(status).json({ 
-      error: 'Orchestration failed', 
-      message: error.message 
-    });
+    console.error('[ALEXA/GATEWAY] Background orchestration failed:', error.message);
   }
 });
 
-// POST /booking/confirm — stubbed for now
+// POST /booking/confirm — triggers booking completion
 app.post('/booking/confirm', (req: Request, res: Response) => {
-  const { sessionId, option } = req.body;
-  console.log(`Received confirmation for session ${sessionId}:`, option);
-  
-  // Slice 5 will implement the actual booking completion
-  res.json({ 
-    status: 'confirmed', 
+  const { userId, optionId } = req.body;
+  console.log(`[ALEXA/GATEWAY] Received confirmation for user ${userId}:`, optionId);
+
+  res.json({
+    status: 'confirmed',
     message: 'Booking completion is not yet implemented (Slice 5).',
-    details: { sessionId, option }
+    details: { userId, optionId }
   });
 });
 

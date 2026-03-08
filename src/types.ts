@@ -9,6 +9,10 @@ export interface BookingRequest {
     maxPrice?: number;
     maxWaitMinutes?: number;
   };
+  alexaContext?: {
+    apiAccessToken: string;
+    apiEndpoint: string;
+  };
 }
 
 export interface ServiceWindow {
