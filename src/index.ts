@@ -16,8 +16,7 @@ async function main() {
 
   console.log('\nFetching app configurations from database...');
   const allApps = await getAppConfigs(request.userId);
-  // For issue #3: test with a single emulator (Uber on emulator-5554)
-  const apps = allApps.slice(1, 2);
+  const apps = allApps;
   console.log(`Testing with: ${apps.map(a => a.appName).join(', ')}`);
 
   console.log('\nChecking connected devices...');
