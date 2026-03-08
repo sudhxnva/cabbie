@@ -37,6 +37,7 @@ export interface AppConfig {
 }
 
 export interface RideOption {
+  optionId: string; // generated post-agent, not by the agent
   name: string; // "UberX", "Lyft Standard"
   price: string; // keep as string — OCR may return ranges like "$12-14"
   priceMin?: number;
@@ -53,4 +54,23 @@ export interface PriceResult {
 
 export interface RankedResult extends RideOption {
   appName: string;
+}
+
+export interface BookingSession {
+  sessionId: string;
+  request: BookingRequest;
+  apps: AppConfig[];
+  rankedResults: RankedResult[];
+  createdAt: Date;
+}
+
+export interface BookingConfirmation {
+  success: boolean;
+  appName: string;
+  sessionId: string;
+  optionId: string;
+  driverName?: string;
+  etaMinutes?: number;
+  tripId?: string;
+  error?: string;
 }

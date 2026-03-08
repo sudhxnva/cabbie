@@ -1,7 +1,8 @@
+import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
-import { AppConfig, BookingRequest, PriceResult, RankedResult } from "./types";
+import { AppConfig, BookingConfirmation, BookingRequest, PriceResult, RankedResult, RideOption } from "./types";
 
 const ROOT = resolve(__dirname, "..");
 
@@ -50,6 +51,7 @@ function escapeForAdb(text: string): string {
 export function buildSubAgentPrompt(
   app: AppConfig,
   request: BookingRequest,
+  deepLinkUri?: string | null,
 ): string {
   const template = loadTemplate("sub-agent.md");
   const memory = loadMemory(app.memoryFilePath);
@@ -63,14 +65,16 @@ export function buildSubAgentPrompt(
     .replace(/{{DROPOFF}}/g, request.dropoff.address)
     .replace(/{{DROPOFF_ESCAPED}}/g, escapeForAdb(request.dropoff.address))
     .replace(/{{PASSENGERS}}/g, String(request.passengers ?? 1))
-    .replace(/{{MEMORY_CONTENT}}/g, memory);
+    .replace(/{{MEMORY_CONTENT}}/g, memory)
+    .replace(/{{DEEPLINK_URI}}/g, deepLinkUri ?? 'N/A');
 }
 
 export async function runSubAgent(
   app: AppConfig,
   request: BookingRequest,
+  deepLinkUri?: string | null,
 ): Promise<PriceResult> {
-  const prompt = buildSubAgentPrompt(app, request);
+  const prompt = buildSubAgentPrompt(app, request, deepLinkUri);
   console.log(
     `  [${app.appName}] Starting sub-agent (device: ${app.emulatorSerial})...`,
   );
@@ -156,19 +160,24 @@ export async function runSubAgent(
         console.log(
           `  [${app.appName}] Sub-agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
         );
+        let result: PriceResult;
         if (msg.structured_output) {
-          return msg.structured_output as PriceResult;
+          result = msg.structured_output as PriceResult;
+        } else {
+          try {
+            result = JSON.parse(msg.result) as PriceResult;
+          } catch {
+            return {
+              appName: app.appName,
+              success: false,
+              error: "Could not parse result",
+              options: [],
+            };
+          }
         }
-        try {
-          return JSON.parse(msg.result) as PriceResult;
-        } catch {
-          return {
-            appName: app.appName,
-            success: false,
-            error: "Could not parse result",
-            options: [],
-          };
-        }
+        // Assign optionId to each option — agents don't generate these
+        result.options = result.options.map(o => ({ ...o, optionId: randomUUID() }));
+        return result;
       } else {
         const errors = msg.errors.join("; ");
         console.error(
@@ -190,6 +199,121 @@ export async function runSubAgent(
     error: "No result message received",
     options: [],
   };
+}
+
+const BookingConfirmationSchema = {
+  type: "object",
+  properties: {
+    success: { type: "boolean" },
+    appName: { type: "string" },
+    driverName: { type: "string" },
+    etaMinutes: { type: "number" },
+    tripId: { type: "string" },
+    error: { type: "string" },
+  },
+  required: ["success", "appName"],
+};
+
+export function buildBookingAgentPrompt(
+  app: AppConfig,
+  option: RideOption,
+  request: BookingRequest,
+): string {
+  const template = loadTemplate("booking-agent.md");
+  const memory = loadMemory(app.memoryFilePath);
+
+  return template
+    .replace(/{{APP_NAME}}/g, app.appName)
+    .replace(/{{APP_ID}}/g, app.appId)
+    .replace(/{{EMULATOR_SERIAL}}/g, app.emulatorSerial)
+    .replace(/{{OPTION_NAME}}/g, option.name)
+    .replace(/{{OPTION_PRICE}}/g, option.price)
+    .replace(/{{OPTION_CATEGORY}}/g, option.category)
+    .replace(/{{PICKUP}}/g, request.pickup.address)
+    .replace(/{{DROPOFF}}/g, request.dropoff.address)
+    .replace(/{{MEMORY_CONTENT}}/g, memory);
+}
+
+export async function invokeBookingAgent(
+  app: AppConfig,
+  option: RideOption,
+  request: BookingRequest,
+): Promise<BookingConfirmation> {
+  const prompt = buildBookingAgentPrompt(app, option, request);
+  console.log(`  [${app.appName}] Starting booking agent for option: ${option.name} (${option.price})...`);
+
+  const stream = query({
+    prompt,
+    options: {
+      model: "claude-haiku-4-5-20251001",
+      permissionMode: "bypassPermissions",
+      allowDangerouslySkipPermissions: true,
+      mcpServers: {
+        adb: {
+          command: "/opt/homebrew/bin/uv",
+          args: [
+            "--directory",
+            "/Users/sudhanva/Documents/Personal/Code/android-mcp-server",
+            "run",
+            "server.py",
+          ],
+          env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
+        },
+      },
+      allowedTools: [
+        "mcp__adb__tap_by_text",
+        "mcp__adb__tap_and_type",
+        "mcp__adb__tap_suggestion",
+        "mcp__adb__get_all_ui_text",
+        "mcp__adb__get_uilayout",
+        "mcp__adb__get_screenshot",
+        "mcp__adb__get_screenshot_text",
+        "mcp__adb__execute_adb_shell_command",
+        "Read",
+        "Write",
+      ],
+      outputFormat: {
+        type: "json_schema",
+        schema: BookingConfirmationSchema,
+      },
+      maxTurns: 20,
+      cwd: ROOT,
+    },
+  });
+
+  for await (const msg of stream) {
+    if (msg.type === "assistant") {
+      for (const block of msg.message.content) {
+        if (block.type === "text" && block.text.trim()) {
+          console.log(`  [${app.appName}] 🤖 ${block.text.trim()}`);
+        } else if (block.type === "tool_use") {
+          console.log(
+            `  [${app.appName}] 🔧 ${block.name}(${JSON.stringify(block.input).slice(0, 120)})`,
+          );
+        }
+      }
+    } else if (msg.type === "result") {
+      if (msg.subtype === "success") {
+        console.log(
+          `  [${app.appName}] Booking agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
+        );
+        if (msg.structured_output) {
+          return msg.structured_output as BookingConfirmation;
+        }
+        try {
+          return JSON.parse(msg.result) as BookingConfirmation;
+        } catch {
+          return { success: false, appName: app.appName, sessionId: "", optionId: "", error: "Could not parse result" };
+        }
+      } else {
+        const errors = msg.errors.join("; ");
+        console.error(`  [${app.appName}] Booking agent failed: ${errors}`);
+        return { success: false, appName: app.appName, sessionId: "", optionId: "", error: `${msg.subtype}: ${errors}` };
+      }
+    }
+  }
+
+  return { success: false, appName: app.appName, sessionId: "", optionId: "", error: "No result message received" };
 }
 
 export function rankResults(

@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { orchestrate } from './orchestrator';
+import { invokeBookingAgent } from './claude';
+import { getSession, deleteSession } from './sessions';
 import { BookingRequest } from './types';
 
 export const app = express();
@@ -33,12 +35,12 @@ app.post('/booking/request', async (req: Request, res: Response) => {
 
   try {
     // Race between orchestration and timeout
-    const results = await Promise.race([
+    const { sessionId, results } = await Promise.race([
       orchestrate(request),
       timeoutPromise
-    ]);
+    ]) as Awaited<ReturnType<typeof orchestrate>>;
 
-    res.json(results);
+    res.json({ sessionId, results });
   } catch (error: any) {
     console.error('Error during booking request:', error.message);
     const status = error.message.includes('timed out') ? 504 : 500;
@@ -49,17 +51,45 @@ app.post('/booking/request', async (req: Request, res: Response) => {
   }
 });
 
-// POST /booking/confirm — stubbed for now
-app.post('/booking/confirm', (req: Request, res: Response) => {
-  const { sessionId, option } = req.body;
-  console.log(`Received confirmation for session ${sessionId}:`, option);
-  
-  // Slice 5 will implement the actual booking completion
-  res.json({ 
-    status: 'confirmed', 
-    message: 'Booking completion is not yet implemented (Slice 5).',
-    details: { sessionId, option }
-  });
+// POST /booking/confirm — invokes booking agent for the selected option
+app.post('/booking/confirm', async (req: Request, res: Response) => {
+  const { sessionId, optionId } = req.body;
+
+  if (!sessionId || !optionId) {
+    return res.status(400).json({ error: 'sessionId and optionId are required' });
+  }
+
+  const session = getSession(sessionId);
+  if (!session) {
+    return res.status(404).json({ error: 'Session not found or expired' });
+  }
+
+  const option = session.rankedResults.find(r => r.optionId === optionId);
+  if (!option) {
+    return res.status(404).json({ error: `Option ${optionId} not found in session` });
+  }
+
+  const app = session.apps.find(a => a.appName === option.appName);
+  if (!app) {
+    return res.status(404).json({ error: `App config for ${option.appName} not found` });
+  }
+
+  console.log(`Confirming booking: session=${sessionId}, option=${option.name} on ${option.appName}`);
+
+  try {
+    const confirmation = await invokeBookingAgent(app, option, session.request);
+    const result = { ...confirmation, sessionId, optionId };
+
+    // Clean up session after successful booking
+    if (confirmation.success) {
+      deleteSession(sessionId);
+    }
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error during booking confirmation:', error.message);
+    res.status(500).json({ error: 'Booking failed', message: error.message });
+  }
 });
 
 if (process.env.NODE_ENV !== 'test') {
