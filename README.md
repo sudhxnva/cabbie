@@ -230,33 +230,6 @@ After the user confirms a selection, a separate booking agent:
 
 ---
 
-## Agent Constraints
-
-| Parameter | Value |
-|-----------|-------|
-| Model | `claude-sonnet-4-6` |
-| Max turns | 30 |
-| Budget cap | $0.50 per sub-agent |
-| Permission mode | `bypassPermissions` |
-| Output format | JSON schema (`PriceResult`) |
-
----
-
-## Known Limitations
-
-- **Uber/Lyft prices** are not in the Android accessibility tree — agents must use screenshot OCR (Mode C), which is slower and occasionally misreads ranges like `$12–14`
-- **CU Night Ride** only operates on weekday evenings and weekends — the orchestrator checks service windows before dispatching an agent
-- **Session expiry** — if too much time passes between price comparison and booking confirmation, the app session may have expired and the booking agent will return failure
-- **Parallel emulators** — both apps sharing `emulator-5556` cannot run simultaneously; the orchestrator handles sequencing
-
----
-
-## Hackathon Context
-
-Built for a hackathon demo. The architecture prioritises working end-to-end over production hardening. MongoDB replaces hardcoded configs; voice interface (ElevenLabs) is planned but not implemented.
-
----
-
 ## License
 
 MIT
