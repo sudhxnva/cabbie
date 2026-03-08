@@ -187,7 +187,7 @@ mcpServers: {
 |---|---|---|---|---|
 | emulator-5554 | `Pixel_8_2_-_Uber` | Uber | `com.ubercab` | `uber-logged-in` |
 | emulator-5556 | `Pixel_8_2_-_CU_NightRide` | CU Night Ride | `com.sparelabs.platform.rider.cunightride` | `cunightride-logged-in` |
-| emulator-5558 | `Pixel_8` | Lyft | `com.lyft.android` | `lyft-logged-in` |
+| emulator-5556 | `Pixel_8` | Lyft | `com.lyft.android` | `lyft-logged-in` |
 
 All three snapshots restore to a logged-in home screen ready for destination entry. All verified via `restoreSnapshot()` + `launchApp()` tests.
 

@@ -22,10 +22,10 @@ export function buildDeepLinkUri(appId: string, params: DeepLinkParams): string 
   if (appId === 'com.ubercab') {
     const p = [
       `action=setPickup`,
-      `pickup[formatted_address]=${encodeURIComponent(pickupAddress)}`,
+      // `pickup[formatted_address]=${encodeURIComponent(pickupAddress)}`,
       `pickup[latitude]=${pickup.lat}`,
       `pickup[longitude]=${pickup.lng}`,
-      `dropoff[formatted_address]=${encodeURIComponent(dropoffAddress)}`,
+      // `dropoff[formatted_address]=${encodeURIComponent(dropoffAddress)}`,
       `dropoff[latitude]=${dropoff.lat}`,
       `dropoff[longitude]=${dropoff.lng}`,
     ].join('&');

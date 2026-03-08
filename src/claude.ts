@@ -4,6 +4,8 @@ import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
 import { AppConfig, BookingConfirmation, BookingRequest, PriceResult, RankedResult, RideOption } from "./types";
 
+import { ts } from "./log";
+
 const ROOT = resolve(__dirname, "..");
 
 const PriceResultSchema = {
@@ -76,7 +78,7 @@ export async function runSubAgent(
 ): Promise<PriceResult> {
   const prompt = buildSubAgentPrompt(app, request, deepLinkUri);
   console.log(
-    `  [${app.appName}] Starting sub-agent (device: ${app.emulatorSerial})...`,
+    `${ts()}  [${app.appName}] Starting sub-agent (device: ${app.emulatorSerial})...`,
   );
 
   const stream = query({
@@ -102,7 +104,6 @@ export async function runSubAgent(
         "mcp__adb__tap_and_type",
         "mcp__adb__tap_suggestion",
         "mcp__adb__get_all_ui_text",
-        "mcp__adb__get_uilayout",
         "mcp__adb__get_screenshot",
         "mcp__adb__get_screenshot_text",
         "mcp__adb__execute_adb_shell_command",
@@ -118,21 +119,25 @@ export async function runSubAgent(
     },
   });
 
+  // Track the last tool name so tool_result logs can be labelled and sized appropriately
+  const lastToolName: { value: string } = { value: "" };
+
   for await (const msg of stream) {
     if (msg.type === "system" && msg.subtype === "init") {
       console.log(
-        `  [${app.appName}] Session init — model: ${msg.model}, tools: ${msg.tools.join(", ")}`,
+        `${ts()}  [${app.appName}] Session init — model: ${msg.model}, tools: ${msg.tools.join(", ")}`,
       );
       console.log(
-        `  [${app.appName}] MCP servers: ${msg.mcp_servers.map(s => `${s.name}(${s.status})`).join(", ")}`,
+        `${ts()}  [${app.appName}] MCP servers: ${msg.mcp_servers.map(s => `${s.name}(${s.status})`).join(", ")}`,
       );
     } else if (msg.type === "assistant") {
       for (const block of msg.message.content) {
         if (block.type === "text" && block.text.trim()) {
-          console.log(`  [${app.appName}] 🤖 ${block.text.trim()}`);
+          console.log(`${ts()}  [${app.appName}] 🤖 ${block.text.trim()}`);
         } else if (block.type === "tool_use") {
+          lastToolName.value = block.name;
           console.log(
-            `  [${app.appName}] 🔧 ${block.name}(${JSON.stringify(block.input).slice(0, 120)})`,
+            `${ts()}  [${app.appName}] 🔧 ${block.name}(${JSON.stringify(block.input).slice(0, 120)})`,
           );
         }
       }
@@ -149,8 +154,13 @@ export async function runSubAgent(
                 .join("")
             : String(block.content ?? "");
           if (content.trim()) {
+            // Show full output for get_all_ui_text so we can verify prices are present;
+            // truncate everything else to keep logs readable.
+            const limit = lastToolName.value === "mcp__adb__get_all_ui_text" ? Infinity : 200;
+            const preview = isFinite(limit) ? content.slice(0, limit) : content;
+            const label = lastToolName.value ? ` (${lastToolName.value})` : "";
             console.log(
-              `  [${app.appName}] ✅ tool_result: ${content.slice(0, 200)}`,
+              `${ts()}  [${app.appName}] ✅ tool_result${label}: ${preview}`,
             );
           }
         }
@@ -158,7 +168,7 @@ export async function runSubAgent(
     } else if (msg.type === "result") {
       if (msg.subtype === "success") {
         console.log(
-          `  [${app.appName}] Sub-agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
+          `${ts()}  [${app.appName}] Sub-agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
         );
         let result: PriceResult;
         if (msg.structured_output) {
@@ -181,7 +191,7 @@ export async function runSubAgent(
       } else {
         const errors = msg.errors.join("; ");
         console.error(
-          `  [${app.appName}] Sub-agent failed (${msg.subtype}): ${errors}`,
+          `${ts()}  [${app.appName}] Sub-agent failed (${msg.subtype}): ${errors}`,
         );
         return {
           appName: app.appName,
@@ -240,7 +250,7 @@ export async function invokeBookingAgent(
   request: BookingRequest,
 ): Promise<BookingConfirmation> {
   const prompt = buildBookingAgentPrompt(app, option, request);
-  console.log(`  [${app.appName}] Starting booking agent for option: ${option.name} (${option.price})...`);
+  console.log(`${ts()}  [${app.appName}] Starting booking agent for option: ${option.name} (${option.price})...`);
 
   const stream = query({
     prompt,
@@ -265,7 +275,6 @@ export async function invokeBookingAgent(
         "mcp__adb__tap_and_type",
         "mcp__adb__tap_suggestion",
         "mcp__adb__get_all_ui_text",
-        "mcp__adb__get_uilayout",
         "mcp__adb__get_screenshot",
         "mcp__adb__get_screenshot_text",
         "mcp__adb__execute_adb_shell_command",
@@ -285,17 +294,17 @@ export async function invokeBookingAgent(
     if (msg.type === "assistant") {
       for (const block of msg.message.content) {
         if (block.type === "text" && block.text.trim()) {
-          console.log(`  [${app.appName}] 🤖 ${block.text.trim()}`);
+          console.log(`${ts()}  [${app.appName}] 🤖 ${block.text.trim()}`);
         } else if (block.type === "tool_use") {
           console.log(
-            `  [${app.appName}] 🔧 ${block.name}(${JSON.stringify(block.input).slice(0, 120)})`,
+            `${ts()}  [${app.appName}] 🔧 ${block.name}(${JSON.stringify(block.input).slice(0, 120)})`,
           );
         }
       }
     } else if (msg.type === "result") {
       if (msg.subtype === "success") {
         console.log(
-          `  [${app.appName}] Booking agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
+          `${ts()}  [${app.appName}] Booking agent complete (${msg.num_turns} turns, $${msg.total_cost_usd.toFixed(4)})`,
         );
         if (msg.structured_output) {
           return msg.structured_output as BookingConfirmation;
@@ -307,7 +316,7 @@ export async function invokeBookingAgent(
         }
       } else {
         const errors = msg.errors.join("; ");
-        console.error(`  [${app.appName}] Booking agent failed: ${errors}`);
+        console.error(`${ts()}  [${app.appName}] Booking agent failed: ${errors}`);
         return { success: false, appName: app.appName, sessionId: "", optionId: "", error: `${msg.subtype}: ${errors}` };
       }
     }

@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
+import { ts } from './log';
 
 const EMULATOR_BINARY =
   process.env.ANDROID_HOME
@@ -84,9 +85,9 @@ async function emulatorConsoleCommand(serial: string, command: string): Promise<
 }
 
 export async function restoreSnapshot(serial: string, snapshotName: string): Promise<void> {
-  console.log(`  [${serial}] Restoring snapshot '${snapshotName}'...`);
+  console.log(`${ts()}   [${serial}] Restoring snapshot '${snapshotName}'...`);
   await emulatorConsoleCommand(serial, `avd snapshot load ${snapshotName}`);
-  console.log(`  [${serial}] Snapshot restored.`);
+  console.log(`${ts()}   [${serial}] Snapshot restored.`);
 }
 
 // Launch an AVD in the background. The port is derived from the expected serial
@@ -97,7 +98,7 @@ export async function launchEmulator(
   timeoutMs = 120_000
 ): Promise<void> {
   const port = parseInt(expectedSerial.replace('emulator-', ''), 10);
-  console.log(`  Launching AVD '${avdName}' on port ${port}...`);
+  console.log(`${ts()}   Launching AVD '${avdName}' on port ${port}...`);
 
   const proc = spawn(
     EMULATOR_BINARY,
@@ -111,7 +112,7 @@ export async function launchEmulator(
   while (Date.now() - start < timeoutMs) {
     const devices = await getConnectedDevices();
     if (devices.includes(expectedSerial)) {
-      console.log(`  [${expectedSerial}] Emulator online.`);
+      console.log(`${ts()}   [${expectedSerial}] Emulator online.`);
       return;
     }
     await sleep(3000);
@@ -120,7 +121,7 @@ export async function launchEmulator(
 }
 
 export async function launchApp(serial: string, appId: string): Promise<void> {
-  console.log(`  [${serial}] Launching ${appId}...`);
+  console.log(`${ts()}   [${serial}] Launching ${appId}...`);
   const device = client.getDevice(serial);
   const stream = await device.shell(`monkey -p ${appId} -c android.intent.category.LAUNCHER 1`);
   await readStream(stream);
@@ -128,14 +129,14 @@ export async function launchApp(serial: string, appId: string): Promise<void> {
 
 export async function waitForBoot(serial: string, timeoutMs = 120_000): Promise<void> {
   const start = Date.now();
-  console.log(`  [${serial}] Waiting for boot...`);
+  console.log(`${ts()}   [${serial}] Waiting for boot...`);
   const device = client.getDevice(serial);
   while (Date.now() - start < timeoutMs) {
     try {
       const stream = await device.shell('getprop sys.boot_completed');
       const val = await readStream(stream);
       if (val === '1') {
-        console.log(`  [${serial}] Boot complete.`);
+        console.log(`${ts()}   [${serial}] Boot complete.`);
         return;
       }
     } catch {

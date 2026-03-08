@@ -95,11 +95,42 @@ Only after Step 2 is confirmed complete:
 
 ## Phase 2 — Read Prices
 
-1. `get_screenshot` — take a screenshot first to understand the visual layout
-2. `get_all_ui_text` — fetch all text nodes with coordinates. **The UI tree includes all ride options even if they are off-screen in a scroll list — do not scroll just to reveal more items.**
-3. **Match prices to rides using the screenshot as ground truth.** For each ride option in the UI tree, find its price by spatial proximity — the price node closest (vertically) to the ride name node.
-4. **Lyft / discounted prices**: apps show both a crossed-out original price and a current price. The **current price** is visually prominent (larger font, not struck-through). The crossed-out price belongs to the ride row it appears in — do NOT carry it over to the next ride. Use the screenshot to confirm which text node is struck-through vs active.
-5. **Only scroll as a last resort** — if after steps 1–4 you cannot confidently map any ride names to prices (e.g. the UI tree returned no price-like text at all). If you do scroll: `execute_adb_shell_command("input swipe 540 1400 540 600")`, then repeat steps 1–3 once.
+The UI tree only contains currently rendered nodes — off-screen items are not included. You must scroll to reveal them.
+
+### Step 1 — Determine read mode from App-Specific Memory
+
+**Read the App-Specific Memory before doing anything else.** It tells you which read mode to use:
+
+- **Read mode A** (`get_all_ui_text`): accessibility tree contains prices.
+- **Read mode B** (`get_screenshot_text`): prices not in accessibility tree, OCR works.
+- **Read mode C** (`get_screenshot`): prices not in accessibility tree, OCR garbles — read visually from screenshots.
+
+Then call `get_screenshot` exactly once to answer: **are there struck-through discount prices?**
+- **No** → single price per ride.
+- **Yes** → two prices per ride; take the second (higher `center_y`) as the active price.
+
+**After this one screenshot, do not call `get_screenshot` again** unless you are in read mode C.
+
+### Step 2 — Scroll-until-stable loop
+
+Maintain a collected `{ride_name → price}` set across all iterations. **Never scroll back up — only scroll down.**
+
+**Read mode A (`get_all_ui_text`)**
+1. `get_all_ui_text` — record all visible ride name + price pairs.
+2. If collected set did not grow → stop.
+3. Otherwise: `execute_adb_shell_command("input swipe 540 1400 540 600")` → go to 1.
+
+**Read mode B (`get_screenshot_text`)**
+1. `get_screenshot_text` — record all visible ride name + price pairs.
+2. If collected set did not grow → stop.
+3. Otherwise: `execute_adb_shell_command("input swipe 540 1400 540 600")` → go to 1.
+
+**Read mode C (`get_screenshot`)**
+1. `get_screenshot` — read all visible ride names and prices from the image.
+2. If collected set did not grow → stop.
+3. Otherwise: `execute_adb_shell_command("input swipe 540 1400 540 600")` → go to 1.
+
+Map each ride name to its price by vertical proximity.
 
 ---
 
@@ -141,3 +172,4 @@ Output a JSON object matching this schema exactly:
 3. After `tap_and_type`, always use `tap_suggestion` (not `tap_by_text`) to select from the dropdown
 4. NEVER include `adb` or `-s emulator-XXXX` in `execute_adb_shell_command`
 5. Return ONLY a JSON object — no prose, no markdown fences
+6. NEVER send `KEYCODE_HOME` — it exits the app to the Android home screen and cannot be recovered from within this session
