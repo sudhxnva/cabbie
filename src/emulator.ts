@@ -92,6 +92,7 @@ export async function restoreSnapshot(serial: string, snapshotName: string): Pro
 
 // Launch an AVD in the background. The port is derived from the expected serial
 // (e.g. emulator-5554 → -port 5554). Returns once the serial appears in adb devices.
+
 export async function launchEmulator(
   avdName: string,
   expectedSerial: string,
@@ -100,11 +101,24 @@ export async function launchEmulator(
   const port = parseInt(expectedSerial.replace('emulator-', ''), 10);
   console.log(`${ts()}   Launching AVD '${avdName}' on port ${port}...`);
 
-  const proc = spawn(
-    EMULATOR_BINARY,
-    ['-avd', avdName, '-port', String(port), '-no-snapshot-save'],
-    { detached: true, stdio: 'ignore' }
-  );
+  const isDebug = process.env.DEBUG === 'true';
+  const args = ['-avd', avdName, '-port', String(port), '-no-snapshot-save'];
+  if (!isDebug) {
+    args.push('-no-window', '-gpu', 'swiftshader_indirect');
+  } else {
+    // No window-position flag supported; windows will appear at default positions
+  }
+
+  const proc = spawn(EMULATOR_BINARY, args, { detached: true, stdio: ['ignore', 'ignore', 'pipe'] });
+  proc.stderr?.on('data', (d: Buffer) => {
+    const line = d.toString().trim();
+    if (line) console.warn(`${ts()}   [emulator stderr] ${line}`);
+  });
+  proc.on('exit', (code, signal) => {
+    if (code !== null && code !== 0) {
+      console.error(`${ts()}   [${avdName}] emulator process exited with code ${code}`);
+    }
+  });
   proc.unref();
 
   // Wait until the serial appears in adb devices

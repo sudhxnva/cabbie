@@ -17,15 +17,28 @@ export interface DeepLinkParams {
 export function buildDeepLinkUri(appId: string, params: DeepLinkParams): string | null {
   const { pickup, pickupAddress, dropoff, dropoffAddress } = params;
 
-  // Uber (com.ubercab) — uber:// custom scheme with lat/lng + formatted_address.
-  // More reliable than the https://m.uber.com/ul/ universal link.
   if (appId === 'com.ubercab') {
+    const style = process.env.UBER_DEEPLINK_STYLE ?? 'universal';
+
+    if (style === 'none') return null;
+
+    if (style === 'universal') {
+      // https://m.uber.com/ul/ universal link — opens the upfront fare estimation screen.
+      // pickup=my_location lets Uber use the device GPS; dropoff is address-only (no coords
+      // needed, Uber geocodes it). This is what the working manual flow produces.
+      const p = [
+        `action=setPickup`,
+        `pickup=my_location`,
+        `dropoff[formatted_address]=${encodeURIComponent(dropoffAddress)}`,
+      ].join('&');
+      return `https://m.uber.com/ul/?${p}`;
+    }
+
+    // style === 'custom' — uber:// scheme with explicit lat/lng.
+    // May trigger a scheduled-ride pre-booking flow on newer Uber versions.
     const p = [
       `action=setPickup`,
-      // `pickup[formatted_address]=${encodeURIComponent(pickupAddress)}`,
-      `pickup[latitude]=${pickup.lat}`,
-      `pickup[longitude]=${pickup.lng}`,
-      // `dropoff[formatted_address]=${encodeURIComponent(dropoffAddress)}`,
+      `dropoff[formatted_address]=${encodeURIComponent(dropoffAddress)}`,
       `dropoff[latitude]=${dropoff.lat}`,
       `dropoff[longitude]=${dropoff.lng}`,
     ].join('&');

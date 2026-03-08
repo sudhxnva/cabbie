@@ -84,7 +84,7 @@ export async function runSubAgent(
   const stream = query({
     prompt,
     options: {
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-6",
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       mcpServers: {
@@ -216,9 +216,7 @@ const BookingConfirmationSchema = {
   properties: {
     success: { type: "boolean" },
     appName: { type: "string" },
-    driverName: { type: "string" },
-    etaMinutes: { type: "number" },
-    tripId: { type: "string" },
+    message: { type: "string" },
     error: { type: "string" },
   },
   required: ["success", "appName"],
@@ -255,7 +253,7 @@ export async function invokeBookingAgent(
   const stream = query({
     prompt,
     options: {
-      model: "claude-haiku-4-5-20251001",
+      model: "claude-sonnet-4-6",
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       mcpServers: {

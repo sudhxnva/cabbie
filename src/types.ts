@@ -69,8 +69,6 @@ export interface BookingConfirmation {
   appName: string;
   sessionId: string;
   optionId: string;
-  driverName?: string;
-  etaMinutes?: number;
-  tripId?: string;
+  message?: string;
   error?: string;
 }
