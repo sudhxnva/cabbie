@@ -1,2 +1,40 @@
-device:
-  name: "emulator-5556" # Device identifier from 'adb devices'
+# Cabbie Configuration
+# 
+# This file can be used for local development.
+# For Docker deployment, use environment variables instead.
+#
+# To use: Copy to config.yaml (already gitignored) and customize values
+
+# Server Configuration
+server:
+  port: 3000
+  nodeEnv: development
+
+# Emulator Configuration
+# Use "local" for local Android SDK mount, "remote" for external emulator
+emulator:
+  mode: local
+  # For local mode: path to Android SDK on host
+  androidSdkHostPath: ~/Android/Sdk
+  # For remote mode: comma-separated list of emulator serials
+  serials:
+    - emulator-5554
+    - emulator-5556
+
+# MongoDB Configuration
+# For Docker: use mongodb://mongodb:27017/cabbie
+# For local: use mongodb://localhost:27017/cabbie
+mongodb:
+  uri: mongodb://localhost:27017/cabbie
+
+# MCP Server Configuration
+mcp:
+  command: npx
+  args:
+    - -y
+    - adb-mcp
+  # Optional: directory for uv-based MCP server
+  # androidMcpDirectory: /path/to/android-mcp-server
+
+# Debug mode
+debug: false

@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: cabbie-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_DATABASE: cabbie
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cabbie-app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongodb:27017/cabbie
+      - PORT=3000
+      # Emulator configuration
+      - EMULATOR_MODE=${EMULATOR_MODE:-local}
+      - ANDROID_SDK_HOST_PATH=${ANDROID_SDK_HOST_PATH:-~/Android/Sdk}
+      - EMULATOR_SERIALS=${EMULATOR_SERIALS:-emulator-5554,emulator-5556}
+      # MCP server configuration
+      - MCP_SERVER_COMMAND=${MCP_SERVER_COMMAND:-npx}
+      - MCP_SERVER_ARGS=${MCP_SERVER_ARGS---y adb-mcp}
+      # Set ANDROID_HOME to mounted SDK path (local mode)
+      - ANDROID_HOME=/android-sdk
+      # Debug mode
+      - DEBUG=${DEBUG:-false}
+      # Rate limiting
+      - RATE_LIMIT_WINDOW_MS=${RATE_LIMIT_WINDOW_MS:-60000}
+      - RATE_LIMIT_MAX_REQUESTS=${RATE_LIMIT_MAX_REQUESTS:-100}
+    volumes:
+      # Mount screenshots directory
+      - ./screenshots:/app/screenshots
+      # Mount memory files
+      - ./memory:/app/memory
+      # Mount Android SDK in local mode
+      - ${ANDROID_SDK_HOST_PATH:-~/Android/Sdk}:/android-sdk:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    # For remote emulator mode, share the host's ADB daemon socket
+    # Uncomment the following lines for remote emulator mode:
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+volumes:
+  mongodb_data:
+    driver: local

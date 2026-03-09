@@ -2,6 +2,11 @@ import { randomUUID } from "crypto";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync, existsSync } from "fs";
 import { resolve } from "path";
+
+// Load environment variables
+import dotenv from "dotenv";
+dotenv.config();
+
 import { AppConfig, BookingConfirmation, BookingRequest, PriceResult, RankedResult, RideOption } from "./types";
 
 import { ts } from "./log";
@@ -81,6 +86,34 @@ export async function runSubAgent(
     `${ts()}  [${app.appName}] Starting sub-agent (device: ${app.emulatorSerial})...`,
   );
 
+  // Get MCP server configuration from environment variables
+  const mcpCommand = process.env.MCP_SERVER_COMMAND || "npx";
+  const mcpArgs = (process.env.MCP_SERVER_ARGS || "-y adb-mcp").split(" ");
+  const mcpDirectory = process.env.ANDROID_MCP_DIRECTORY;
+
+  // Build MCP server config based on environment
+  let mcpConfig: {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+  };
+
+  if (mcpDirectory) {
+    // Use uv-based MCP server with directory
+    mcpConfig = {
+      command: mcpCommand,
+      args: ["--directory", mcpDirectory, "run", "server.py"],
+      env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
+    };
+  } else {
+    // Use npx-based MCP server
+    mcpConfig = {
+      command: mcpCommand,
+      args: mcpArgs,
+      env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
+    };
+  }
+
   const stream = query({
     prompt,
     options: {
@@ -88,16 +121,7 @@ export async function runSubAgent(
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       mcpServers: {
-        adb: {
-          command: "/opt/homebrew/bin/uv",
-          args: [
-            "--directory",
-            "/Users/sudhanva/Documents/Personal/Code/android-mcp-server",
-            "run",
-            "server.py",
-          ],
-          env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
-        },
+        adb: mcpConfig,
       },
       allowedTools: [
         "mcp__adb__tap_by_text",
@@ -250,6 +274,34 @@ export async function invokeBookingAgent(
   const prompt = buildBookingAgentPrompt(app, option, request);
   console.log(`${ts()}  [${app.appName}] Starting booking agent for option: ${option.name} (${option.price})...`);
 
+  // Get MCP server configuration from environment variables
+  const mcpCommand = process.env.MCP_SERVER_COMMAND || "npx";
+  const mcpArgs = (process.env.MCP_SERVER_ARGS || "-y adb-mcp").split(" ");
+  const mcpDirectory = process.env.ANDROID_MCP_DIRECTORY;
+
+  // Build MCP server config based on environment
+  let mcpConfig: {
+    command: string;
+    args: string[];
+    env?: Record<string, string>;
+  };
+
+  if (mcpDirectory) {
+    // Use uv-based MCP server with directory
+    mcpConfig = {
+      command: mcpCommand,
+      args: ["--directory", mcpDirectory, "run", "server.py"],
+      env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
+    };
+  } else {
+    // Use npx-based MCP server
+    mcpConfig = {
+      command: mcpCommand,
+      args: mcpArgs,
+      env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
+    };
+  }
+
   const stream = query({
     prompt,
     options: {
@@ -257,16 +309,7 @@ export async function invokeBookingAgent(
       permissionMode: "bypassPermissions",
       allowDangerouslySkipPermissions: true,
       mcpServers: {
-        adb: {
-          command: "/opt/homebrew/bin/uv",
-          args: [
-            "--directory",
-            "/Users/sudhanva/Documents/Personal/Code/android-mcp-server",
-            "run",
-            "server.py",
-          ],
-          env: { ANDROID_DEVICE_SERIAL: app.emulatorSerial },
-        },
+        adb: mcpConfig,
       },
       allowedTools: [
         "mcp__adb__tap_by_text",

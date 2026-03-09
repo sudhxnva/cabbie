@@ -175,6 +175,149 @@ npm run server
 npm run dev
 ```
 
+---
+
+## Docker Deployment
+
+Cabbie can be deployed using Docker Compose with either a local Android emulator or a remote emulator configuration.
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Android emulators (local or remote)
+
+### Quick Start (Local Emulator Mode)
+
+1. Copy the environment file and configure:
+
+```bash
+cp .env.example .env
+# Edit .env and set:
+#   ANTHROPIC_API_KEY=sk-ant-...
+#   EMULATOR_MODE=local
+#   ANDROID_SDK_HOST_PATH=~/Android/Sdk  # Path to Android SDK on your host
+```
+
+2. Build and start the containers:
+
+```bash
+docker-compose up --build -d
+```
+
+3. Verify the containers are running:
+
+```bash
+docker-compose ps
+# You should see cabbie-app and cabbie-mongodb as "healthy"
+```
+
+4. Test the health endpoint:
+
+```bash
+curl http://localhost:3000/health
+# Returns: { status: "ok" }
+```
+
+5. Seed the database with demo data:
+
+```bash
+docker-compose exec app npm run seed
+```
+
+### API Authentication
+
+The booking endpoints require authentication via API keys:
+
+```bash
+# Without API key - returns 401
+curl -X POST http://localhost:3000/booking/request \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"demo-user","pickup":{"address":"A"},"dropoff":{"address":"B"},"constraints":{"priority":"cheapest"}}'
+
+# With valid API key
+curl -X POST http://localhost:3000/booking/request \
+  -H "X-API-Key: my-test-key" \
+  -H "Content-Type: application/json" \
+  -d '{"userId":"demo-user","pickup":{"address":"A"},"dropoff":{"address":"B"},"constraints":{"priority":"cheapest"}}'
+```
+
+Set `API_KEYS=key1,key2,key3` in your `.env` file.
+
+### Remote Emulator Mode
+
+For remote emulator mode (when emulators run outside Docker):
+
+1. Configure your `.env` file:
+
+```bash
+# Set to remote mode
+EMULATOR_MODE=remote
+# Specify emulator serials to use
+EMULATOR_SERIALS=emulator-5554,emulator-5556
+```
+
+2. Ensure emulators are accessible from the container:
+
+```bash
+# Option 1: Connect ADB via network
+adb connect <host-ip>:<port>
+
+# Option 2: Use extra_hosts in docker-compose.yml
+# Uncomment the extra_hosts section in docker-compose.yml
+```
+
+3. Start the containers:
+
+```bash
+docker-compose up -d
+```
+
+### Environment Variables Reference
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `ANTHROPIC_API_KEY` | Anthropic API key (required) | - |
+| `API_KEYS` | API keys for authentication (comma-separated) | - |
+| `MONGODB_URI` | MongoDB connection string | `mongodb://mongodb:27017/cabbie` |
+| `PORT` | Server port | `3000` |
+| `NODE_ENV` | Environment | `production` |
+| `EMULATOR_MODE` | `local` or `remote` | `local` |
+| `ANDROID_SDK_HOST_PATH` | Host path to Android SDK | `~/Android/Sdk` |
+| `EMULATOR_SERIALS` | Comma-separated emulator serials | `emulator-5554,emulator-5556` |
+| `MCP_SERVER_COMMAND` | MCP server command | `npx` |
+| `MCP_SERVER_ARGS` | MCP server args | `-y adb-mcp` |
+| `DEBUG` | Show emulator windows | `false` |
+| `LOG_LEVEL` | Log level (trace, debug, info, warn, error, fatal) | `info` |
+| `RATE_LIMIT_WINDOW_MS` | Rate limit window in ms | `60000` |
+| `RATE_LIMIT_MAX_REQUESTS` | Max requests per window | `100` |
+
+### Volume Mounts
+
+The following directories are mounted from the host:
+
+- `./screenshots:/app/screenshots` — Agent screenshots
+- `./memory:/app/memory` — Navigation memory files
+- `${ANDROID_SDK_HOST_PATH}:/android-sdk:ro` — Android SDK (local mode only)
+
+### Troubleshooting
+
+**Container won't start:**
+```bash
+# Check logs
+docker-compose logs app
+docker-compose logs mongodb
+```
+
+**MongoDB connection issues:**
+```bash
+# Wait for MongoDB to be ready
+docker-compose logs mongodb | grep "Waiting for connections"
+```
+
+**Emulator not found:**
+- For local mode: Ensure `ANDROID_SDK_HOST_PATH` points to a valid SDK with emulators
+- For remote mode: Ensure emulators are accessible via `adb connect`
+
 ### Smoke Test
 
 Run this from a terminal **outside** any active Claude Code session (the SDK spawns a `claude` subprocess):

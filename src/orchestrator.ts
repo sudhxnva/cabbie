@@ -159,7 +159,7 @@ export async function orchestrate(
   }
 
   const sessionId = randomUUID();
-  storeSession({
+  await storeSession({
     sessionId,
     request,
     apps: availableApps,

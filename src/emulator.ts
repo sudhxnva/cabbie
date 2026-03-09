@@ -6,10 +6,24 @@ import * as path from 'path';
 import { spawn } from 'child_process';
 import { ts } from './log';
 
-const EMULATOR_BINARY =
-  process.env.ANDROID_HOME
-    ? path.join(process.env.ANDROID_HOME, 'emulator', 'emulator')
-    : '/Users/sudhanva/Library/Android/sdk/emulator/emulator';
+// Load environment variables
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Emulator binary path - configurable via environment variables
+// Priority: EMULATOR_BINARY_PATH env var > ANDROID_HOME/emulator/emulator > default
+const getEmulatorBinary = (): string => {
+  if (process.env.EMULATOR_BINARY_PATH) {
+    return process.env.EMULATOR_BINARY_PATH;
+  }
+  if (process.env.ANDROID_HOME) {
+    return path.join(process.env.ANDROID_HOME, 'emulator', 'emulator');
+  }
+  // Fallback - will only work on systems with default Android SDK location
+  return path.join(os.homedir(), 'Library', 'Android', 'sdk', 'emulator', 'emulator');
+};
+
+const EMULATOR_BINARY = getEmulatorBinary();
 
 const client = Adb.createClient();
 

@@ -4,6 +4,8 @@ import { orchestrate } from './orchestrator';
 import { invokeBookingAgent } from './claude';
 import { getSession, deleteSession } from './sessions';
 import { BookingRequest } from './types';
+import { authMiddleware } from './middleware/auth';
+import { rateLimiter, bookingRateLimiter } from './middleware/rate-limit';
 
 export const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,13 +13,19 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// GET /health — sanity check
+// Apply general rate limiting to all requests
+app.use(rateLimiter);
+
+// GET /health — sanity check (no auth required)
 app.get('/health', (req: Request, res: Response) => {
   res.json({ status: 'ok' });
 });
 
+// Apply auth middleware to /booking/* routes
+app.use('/booking', authMiddleware);
+
 // POST /booking/request — accepts BookingRequest, runs orchestration, returns ranked results
-app.post('/booking/request', async (req: Request, res: Response) => {
+app.post('/booking/request', bookingRateLimiter, async (req: Request, res: Response) => {
   const request: BookingRequest = req.body;
 
   if (!request.userId || !request.pickup || !request.dropoff || !request.constraints) {
@@ -59,7 +67,7 @@ app.post('/booking/confirm', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'sessionId and optionId are required' });
   }
 
-  const session = getSession(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     return res.status(404).json({ error: 'Session not found or expired' });
   }
@@ -82,7 +90,7 @@ app.post('/booking/confirm', async (req: Request, res: Response) => {
 
     // Clean up session after successful booking
     if (confirmation.success) {
-      deleteSession(sessionId);
+      await deleteSession(sessionId);
     }
 
     res.json(result);

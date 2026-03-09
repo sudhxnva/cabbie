@@ -5,9 +5,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // MongoDB connection string should come from env
-const MONGO_URI = process.env.MONGO_URI;
+// Support both MONGODB_URI and MONGO_URI for backward compatibility
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI;
 if (!MONGO_URI) {
-  console.error('MONGO_URI is not defined in environment');
+  console.error('MONGODB_URI is not defined in environment');
   process.exit(1);
 }
 
@@ -143,3 +144,25 @@ const bookingRequestSchema = new mongoose.Schema<IBookingRequest>({
 });
 
 export const BookingRequest = mongoose.model<IBookingRequest>('BookingRequest', bookingRequestSchema);
+
+// Session Schema (for storing booking sessions in MongoDB with TTL)
+export interface ISession {
+  sessionId: string;
+  request: any;
+  apps: any[];
+  rankedResults: any[];
+  createdAt: Date;
+}
+
+const sessionSchema = new mongoose.Schema({
+  sessionId: { type: String, required: true, unique: true },
+  request: { type: mongoose.Schema.Types.Mixed, required: true },
+  apps: { type: Array, default: [] },
+  rankedResults: { type: Array, default: [] },
+  createdAt: { type: Date, default: Date.now },
+});
+
+// Index with TTL - auto-delete after 24 hours
+sessionSchema.index({ createdAt: 1 }, { expireAfterSeconds: 86400 });
+
+export const Session = mongoose.model<ISession>('Session', sessionSchema);
